@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transcrição de Arquivo PPTX</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.6.0/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.8.0/html-docx.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.4.1/html2canvas.min.js"></script>
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      max-width: 800px;
+      width: 100%;
+      padding: 20px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    }
+
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 30px;
+      font-size: 2.4em;
+      font-weight: 600;
+    }
+
+    input[type="file"] {
+      display: block;
+      margin: 0 auto 20px;
+      padding: 15px 20px;
+      background-color: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s ease, transform 0.3s ease;
+    }
+
+    input[type="file"]:hover {
+      background-color: #2980b9;
+      transform: scale(1.02);
+    }
+
+    #output {
+      background-color: #f39c12;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+      font-size: 1em;
+      line-height: 1.6;
+      color: #ffffff;
+      max-height: 500px;
+      overflow-y: auto;
+      border: 1px solid #e67e22;
+    }
+
+    #output::-webkit-scrollbar {
+      width: 12px;
+    }
+
+    #output::-webkit-scrollbar-track {
+      background: #f39c12;
+    }
+
+    #output::-webkit-scrollbar-thumb {
+      background-color: #e67e22;
+      border-radius: 8px;
+    }
+
+    .loading {
+      text-align: center;
+      font-weight: bold;
+      color: #ffffff;
+    }
+
+    .slide {
+      margin-bottom: 20px;
+    }
+
+    .slide-header {
+      font-size: 1.2em;
+      color: #ffffff;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+
+    .slide-content {
+      white-space: pre-wrap;
+      font-size: 1em;
+    }
+
+    .export-button {
+      display: block;
+      margin: 20px auto;
+      padding: 10px 20px;
+      background-color: #2ecc71;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .export-button:hover {
+      background-color: #27ae60;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Transcrição de Arquivo PPTX</h1>
+    <input type="file" id="fileInput" accept=".pptx">
+    <div id="output">A transcrição aparecerá aqui...</div>
+    <button class="export-button" onclick="exportContent()">Exportar Transcrição</button>
+  </div>
+
+  <script>
+    document.getElementById('fileInput').addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (file && file.name.endsWith('.pptx')) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const arrayBuffer = e.target.result;
+
+          // Inicializando o JSZip para descompactar o arquivo pptx
+          JSZip.loadAsync(arrayBuffer).then(function(zip) {
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = '<div class="loading">Carregando slides e extraindo texto...</div>';
+
+            // Buscar todos os slides na pasta ppt/slides
+            const slidePromises = [];
+            zip.folder("ppt/slides").forEach(function (relativePath, file) {
+              slidePromises.push(file.async("string"));
+            });
+
+            Promise.all(slidePromises).then(function (slides) {
+              let extractedText = '';
+              slides.forEach(function(slideContent, index) {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(slideContent, "text/xml");
+
+                // Capturando todos os elementos <a:t> onde o texto dos slides está geralmente presente
+                const texts = xmlDoc.getElementsByTagName("a:t");
+
+                // Verificar se o slide tem algum texto e evitar slides vazios
+                if (texts.length > 0) {
+                  extractedText += `<div class="slide"><div class="slide-header">Slide ${index + 1}:</div>`;
+                  for (let i = 0; i < texts.length; i++) {
+                    extractedText += `<div class="slide-content">${texts[i].textContent}</div>`;
+                  }
+                  extractedText += '</div>';
+                }
+              });
+
+              outputDiv.innerHTML = extractedText || "Nenhum texto encontrado nos slides.";
+            }).catch(function (error) {
+              outputDiv.textContent = "Erro ao extrair texto dos slides.";
+              console.error("Erro:", error);
+            });
+          });
+        };
+
+        reader.readAsArrayBuffer(file);
+      } else {
+        alert('Por favor, selecione um arquivo .pptx válido.');
+      }
+    });
+
+    function exportContent() {
+      const outputDiv = document.getElementById('output');
+      const content = outputDiv.innerHTML;
+
+      const format = prompt("Escolha o formato de exportação: \n1. Word\n2. PDF", "1");
+
+      if (format === '1') {
+        // Exportar para Word
+        const converted = htmlDocx.asBlob(content);
+        const url = URL.createObjectURL(converted);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'transcricao.docx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else if (format === '2') {
+        // Exportar para PDF
+        const { jsPDF } = window.jspdf;
+        html2canvas(outputDiv).then(canvas => {
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF();
+          pdf.addImage(imgData, 'PNG', 10, 10);
+          pdf.save('transcricao.pdf');
+        });
+      }
+    }
+  </script>
+
+</body>
+</html>
